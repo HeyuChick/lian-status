@@ -51,7 +51,11 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  background: var(--bg);
+  color-scheme: dark;
+}
 
 body {
   background: var(--bg);
@@ -63,7 +67,7 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 button, .topbar, .hero-tag, .hero-title, .toolbar, .footer {
@@ -174,12 +178,20 @@ html.has-cursor .server-head {
 
 /* Background WebGL2 Waves */
 a-waves {
+  display: block;
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  width: 100dvw;
+  height: 100dvh;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  contain: strict;
+  contain: layout style;
+  isolation: isolate;
+  transform: translateZ(0);
+  will-change: opacity;
   opacity: var(--waves-opacity);
   transition: opacity .8s ease;
 }
@@ -188,6 +200,15 @@ a-waves canvas {
   width: 100%;
   height: 100%;
   color: rgb(var(--goo-color));
+}
+
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  pointer-events: none;
+  overflow: hidden;
+  contain: layout style;
 }
 
 .shell {
@@ -950,6 +971,7 @@ a-waves canvas {
 
 <a-waves aria-hidden="true"><canvas></canvas></a-waves>
 <lian-cursor class="cursor-dot" id="cursorDot" follow="0.18" aria-hidden="true"></lian-cursor>
+<div class="fx-layer" id="fxLayer" aria-hidden="true"></div>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
@@ -1182,7 +1204,9 @@ class WaveGL {
       gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 8, i * 8);
       gl.vertexAttribDivisor(location, 1);
     });
+    gl.clearColor(0, 0, 0, 0);
     gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
     gl.blendEquation(gl.MAX);
   }
   resize(width, height, dpr, positions, pitch) {
@@ -1197,6 +1221,7 @@ class WaveGL {
   }
   draw(positions, color) {
     const gl = this.gl;
+    if (gl.isContextLost()) return;
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform3fv(this.color, color);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions);
@@ -1275,11 +1300,29 @@ class AWaves extends HTMLElement {
     document.addEventListener('visibilitychange', this.sync, { signal });
     this.reduced.addEventListener('change', this.sync, { signal });
     this.addEventListener('webglcontextlost', e => {
+      if (e.target !== this.canvas) return;
       e.preventDefault();
       this.lost = true;
-      this.sync();
+      cancelAnimationFrame(this.frame);
+      this.frame = 0;
+      clearTimeout(this.restoreTimer);
+      this.restoreTimer = setTimeout(() => {
+        if (!this.isConnected || !this.lost) return;
+        this.lost = false;
+        this.renderer = null;
+        if (this.canvas) {
+          const canvas = this.canvas.cloneNode(false);
+          this.canvas.replaceWith(canvas);
+          this.canvas = canvas;
+          this.renderer = new WaveCanvas(canvas);
+        }
+        this.resizeNeeded = true;
+        this.sync();
+      }, 400);
     }, { capture: true, signal });
     this.addEventListener('webglcontextrestored', () => {
+      clearTimeout(this.restoreTimer);
+      this.restoreTimer = 0;
       this.lost = false;
       this.renderer = null;
       this.resizeNeeded = true;
@@ -1294,6 +1337,8 @@ class AWaves extends HTMLElement {
     this.sync();
   }
   disconnectedCallback() {
+    clearTimeout(this.restoreTimer);
+    this.restoreTimer = 0;
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.lastTime = 0;
@@ -1317,7 +1362,7 @@ class AWaves extends HTMLElement {
   }
   initRenderer() {
     this.canvas = this.querySelector('canvas');
-    const gl = this.canvas.getContext('webgl2', { antialias: false, depth: false });
+    const gl = this.canvas.getContext('webgl2', { antialias: false, depth: false, alpha: true, powerPreference: 'default' });
     const info = gl?.getExtension('WEBGL_debug_renderer_info');
     const software = info && /SwiftShader|llvmpipe|softpipe|Software/i.test(gl.getParameter(info.UNMASKED_RENDERER_WEBGL));
     if (gl && !software) {
@@ -1328,16 +1373,26 @@ class AWaves extends HTMLElement {
       }
     }
     if (!this.renderer) {
-      gl?.getExtension('WEBGL_lose_context')?.loseContext();
       const canvas = this.canvas.cloneNode(false);
       this.canvas.replaceWith(canvas);
       this.canvas = canvas;
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+      this.lost = false;
       this.renderer = new WaveCanvas(canvas);
     }
   }
   setSize() {
-    const { width, height, left, top } = this.getBoundingClientRect();
-    const dpr = devicePixelRatio;
+    const rect = this.getBoundingClientRect();
+    const width = Math.round(rect.width || window.innerWidth);
+    const height = Math.round(rect.height || window.innerHeight);
+    if (width <= 0 || height <= 0) return false;
+    const dpr = devicePixelRatio || 1;
+    if (this.width === width && this.height === height && this.dpr === dpr && this.points) {
+      this.left = rect.left;
+      this.top = rect.top;
+      this.resizeNeeded = false;
+      return true;
+    }
     const columns = Math.ceil((width + 200) / 14) + 1;
     const rows = Math.ceil((height + 30) / 36) + 1;
     const pitch = rows + 2;
@@ -1354,12 +1409,13 @@ class AWaves extends HTMLElement {
         }
       }
     }
-    Object.assign(this, { width, height, left, top, dpr, rows, columns, pitch });
+    Object.assign(this, { width, height, left: rect.left, top: rect.top, dpr, rows, columns, pitch });
     this.renderer.resize(width, height, dpr, this.positions, pitch);
     this.resizeNeeded = false;
+    return true;
   }
   pulse(cx, cy, strength = 1.6, radius = 220) {
-    if (!this.points || this.reduced.matches) return;
+    if (!this.points || this.reduced.matches || !Number.isFinite(cx) || !Number.isFinite(cy)) return;
     const points = this.points;
     const x = cx - this.left, y = cy - this.top;
     for (let i = 0; i < points.length; i += 6) {
@@ -1367,20 +1423,26 @@ class AWaves extends HTMLElement {
       const d = Math.hypot(dx, dy);
       if (d < radius && d > 0.001) {
         const f = (1 - d / radius) * strength / d;
-        points[i + 4] += dx * f;
-        points[i + 5] += dy * f;
+        points[i + 4] = Math.max(-25, Math.min(25, points[i + 4] + dx * f));
+        points[i + 5] = Math.max(-25, Math.min(25, points[i + 5] + dy * f));
       }
     }
   }
   movePoints(dt) {
+    if (!Number.isFinite(dt) || dt <= 0) return;
     const mouse = this.mouse, points = this.points;
     const mx = mouse.sx - this.left, my = mouse.sy - this.top;
-    const forceX = mouse.dx * mouse.vs * 0.11375;
-    const forceY = mouse.dy * mouse.vs * 0.11375;
-    const steps = Math.ceil(dt), step = dt / steps;
+    const rawFX = mouse.dx * mouse.vs * 0.11375;
+    const rawFY = mouse.dy * mouse.vs * 0.11375;
+    const forceX = Number.isFinite(rawFX) ? rawFX : 0;
+    const forceY = Number.isFinite(rawFY) ? rawFY : 0;
+    const steps = Math.max(1, Math.ceil(dt)), step = dt / steps;
     const friction = Math.pow(0.925, step);
     for (let i = 0; i < points.length; i += 6) {
-      let x = points[i + 2], y = points[i + 3], vx = points[i + 4], vy = points[i + 5];
+      let x = Number.isFinite(points[i + 2]) ? points[i + 2] : 0;
+      let y = Number.isFinite(points[i + 3]) ? points[i + 3] : 0;
+      let vx = Number.isFinite(points[i + 4]) ? points[i + 4] : 0;
+      let vy = Number.isFinite(points[i + 5]) ? points[i + 5] : 0;
       const dx = points[i] - mx, dy = points[i + 1] - my;
       const distance = dx * dx + dy * dy;
       let force = 0;
@@ -1396,8 +1458,10 @@ class AWaves extends HTMLElement {
         if (Math.abs(x) > 100) { x = Math.sign(x) * 100; if (vx * x > 0) vx = 0; }
         if (Math.abs(y) > 100) { y = Math.sign(y) * 100; if (vy * y > 0) vy = 0; }
       }
-      points[i + 2] = x; points[i + 3] = y;
-      points[i + 4] = vx; points[i + 5] = vy;
+      points[i + 2] = Number.isFinite(x) ? x : 0;
+      points[i + 3] = Number.isFinite(y) ? y : 0;
+      points[i + 4] = Number.isFinite(vx) ? vx : 0;
+      points[i + 5] = Number.isFinite(vy) ? vy : 0;
     }
   }
   drawPositions() {
@@ -1422,9 +1486,23 @@ class AWaves extends HTMLElement {
   }
   updateColor() {
     if (this.colorNeeded) {
-      const m = getComputedStyle(this.canvas).color.match(/[\d.]+/g);
-      if (m && m.length >= 3) {
-        const rgb = m.slice(0, 3).map(n => Number(n) / 255);
+      const rawVar = getComputedStyle(document.documentElement).getPropertyValue('--goo-color').trim();
+      let rgb = null;
+      if (rawVar) {
+        const m = rawVar.match(/[\d.]+/g);
+        if (m && m.length >= 3) {
+          rgb = m.slice(0, 3).map(n => Math.max(0, Math.min(1, Number(n) / 255)));
+        }
+      }
+      if (!rgb) {
+        const m = getComputedStyle(this.canvas).color.match(/[\d.]+/g);
+        if (m && m.length >= 3) {
+          const vals = m.slice(0, 3).map(Number);
+          const alreadyUnit = vals.every(v => v <= 1);
+          rgb = vals.map(v => Math.max(0, Math.min(1, alreadyUnit ? v : v / 255)));
+        }
+      }
+      if (rgb && rgb.every(Number.isFinite)) {
         this.colorFrom.set(this.color);
         this.colorTo.set(rgb);
         this.colorStart = this.time;
@@ -1432,17 +1510,23 @@ class AWaves extends HTMLElement {
       }
       this.colorNeeded = false;
     }
-    const t = Math.min(1, (this.time - (this.colorStart || 0)) / 800);
+    const t = Math.max(0, Math.min(1, (this.time - (this.colorStart || 0)) / 800));
     let x = t;
     for (let i = 0; i < 5; i++) x -= ((1.75 * x - 0.75) * x * x + 0.75 * x - t) / ((5.25 * x - 1.5) * x + 0.75);
-    const eased = ((-1.7 * x + 2.4) * x + 0.3) * x;
+    const eased = Math.max(0, Math.min(1, ((-1.7 * x + 2.4) * x + 0.3) * x));
     for (let i = 0; i < 3; i++) this.color[i] = this.colorFrom[i] + (this.colorTo[i] - this.colorFrom[i]) * eased;
   }
   tick(now) {
     this.frame = 0;
     if (!this.renderer) { this.initRenderer(); this.resizeNeeded = true; }
-    if (this.resizeNeeded || this.dpr !== devicePixelRatio) this.setSize();
-    const elapsed = this.lastTime ? Math.min(50, now - this.lastTime) : 1000 / 60;
+    if (this.resizeNeeded || this.dpr !== (devicePixelRatio || 1)) {
+      if (!this.setSize()) {
+        this.frame = requestAnimationFrame(this.tick);
+        return;
+      }
+    }
+    const rawElapsed = this.lastTime ? (now - this.lastTime) : (1000 / 60);
+    const elapsed = Math.max(1, Math.min(50, (Number.isFinite(rawElapsed) && rawElapsed > 0) ? rawElapsed : (1000 / 60)));
     this.lastTime = now;
     this.time += elapsed;
     this.updateColor();
@@ -1454,7 +1538,8 @@ class AWaves extends HTMLElement {
     const dx = mouse.x - mouse.lx, dy = mouse.y - mouse.ly;
     const distance = Math.hypot(dx, dy);
     mouse.vs += (distance / dt - mouse.vs) * smooth;
-    mouse.vs = Math.min(100, mouse.vs);
+    if (!Number.isFinite(mouse.vs)) mouse.vs = 0;
+    mouse.vs = Math.max(0, Math.min(100, mouse.vs));
     if (distance > 0) { mouse.dx = dx / distance; mouse.dy = dy / distance; }
     mouse.lx = mouse.x; mouse.ly = mouse.y;
     this.movePoints(dt);
@@ -1765,9 +1850,12 @@ let currentLang = 'zh';
 let currentHealthKey = 'loading';
 let clickEnergy = 0;
 let clickTimer = 0;
+let lastAppliedColor = '';
+let lastAppliedWaves = '';
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const emotionLabel = document.getElementById('emotionLabel');
 const titleEl = document.getElementById('heroTitle');
+const fxLayer = document.getElementById('fxLayer');
 let typeTimer = null;
 
 function applyAmbientTheme() {
@@ -1780,8 +1868,14 @@ function applyAmbientTheme() {
     else if (clickEnergy > 40) { color = '167, 139, 250'; waves = '.22'; }
     else { color = '103, 232, 249'; waves = '.20'; }
   }
-  document.documentElement.style.setProperty('--goo-color', color);
-  document.documentElement.style.setProperty('--waves-opacity', waves);
+  if (color !== lastAppliedColor) {
+    lastAppliedColor = color;
+    document.documentElement.style.setProperty('--goo-color', color);
+  }
+  if (waves !== lastAppliedWaves) {
+    lastAppliedWaves = waves;
+    document.documentElement.style.setProperty('--waves-opacity', waves);
+  }
   emotionLabel.textContent = I18N[currentLang][stage.key] || stage.key;
 }
 
@@ -1795,6 +1889,10 @@ function decayClickEnergy() {
 }
 
 function spawnRipple(x, y) {
+  const container = fxLayer || document.body;
+  while (fxLayer && fxLayer.children.length >= 6) {
+    fxLayer.firstElementChild.remove();
+  }
   const fx = document.createElement('div');
   fx.className = 'ripple-fx';
   fx.style.left = `${x}px`;
@@ -1822,9 +1920,14 @@ function spawnRipple(x, y) {
     goo.appendChild(drop);
   }
   fx.appendChild(goo);
-  document.body.appendChild(fx);
-  ring2.addEventListener('animationend', () => fx.remove(), { once: true });
-  ring2.addEventListener('animationcancel', () => fx.remove(), { once: true });
+  container.appendChild(fx);
+  const cleanup = () => {
+    clearTimeout(fallbackTimer);
+    fx.remove();
+  };
+  const fallbackTimer = setTimeout(cleanup, 900);
+  ring2.addEventListener('animationend', cleanup, { once: true });
+  ring2.addEventListener('animationcancel', cleanup, { once: true });
   const waves = document.querySelector('a-waves');
   if (waves && typeof waves.pulse === 'function') waves.pulse(x, y);
 }
