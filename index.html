@@ -1,0 +1,2661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>状态 · 涟 Lian</title>
+<meta name="description" content="涟（Lian）服务器监控探针 · ServerStatus">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a0a0a'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%235eead4'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%231f1f22' stroke-width='1.5'/%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg:         #0a0a0a;
+  --bg-soft:    #111113;
+  --bg-hover:   rgba(17, 17, 19, .78);
+  --line:       #1f1f22;
+  --line-soft:  rgba(255, 255, 255, .06);
+  --text:       #f5f5f4;
+  --text-dim:   #a1a1aa;
+  --text-faint: #52525b;
+
+  /* 6-stage Lian bioluminescent palette */
+  --c-calm:     94, 234, 212;   /* #5eead4 teal */
+  --c-cyan:     103, 232, 249;  /* #67e8f9 cyan */
+  --c-violet:   167, 139, 250;  /* #a78bfa violet */
+  --c-pink:     244, 114, 182;  /* #f472b6 pink */
+  --c-alert:    248, 113, 113;  /* #f87171 coral red */
+
+  --goo-color:     255, 255, 255;
+  --goo-opacity:   .85;
+  --waves-opacity: .14;
+
+  --font-sans: 'Noto Sans SC', 'Noto Sans JP', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Noto Sans SC', 'Noto Sans JP', ui-monospace, monospace;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+
+  --page-pad-x: clamp(20px, 7vw, 100px);
+  --page-pad-y: clamp(16px, 3vh, 28px);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+button, .topbar, .hero-tag, .hero-title, .toolbar, .footer {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.summary-strip, .server-list, .drawer-inner {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.num, .mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom Lian Cursor */
+html.has-cursor,
+html.has-cursor a,
+html.has-cursor button,
+html.has-cursor .server-head {
+  cursor: none;
+}
+
+.cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: rgb(var(--goo-color));
+  pointer-events: none;
+  will-change: transform;
+  opacity: 0;
+  transition:
+    opacity .3s ease,
+    background-color .8s ease,
+    border-color .8s ease,
+    width .25s ease,
+    height .25s ease,
+    margin .25s ease;
+}
+
+.cursor-dot.visible { opacity: .9; }
+.cursor-dot.hovering {
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  opacity: .5;
+}
+.cursor-dot:not(.visible) { opacity: 0; }
+
+/* Click Goo Ripple */
+.ripple-fx {
+  position: fixed;
+  z-index: 99;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.ripple-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160px;
+  height: 160px;
+  border: 1.5px solid rgb(var(--goo-color));
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(.05);
+  opacity: .8;
+  animation: ripple-expand .6s cubic-bezier(.2, .6, .3, 1) forwards;
+}
+.ripple-ring-2 {
+  width: 110px;
+  height: 110px;
+  opacity: .45;
+  animation-delay: .08s;
+}
+@keyframes ripple-expand {
+  to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+.ripple-goo {
+  position: absolute;
+  left: -60px;
+  top: -60px;
+  width: 120px;
+  height: 120px;
+  filter: url(#goo);
+}
+.ripple-drop {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: rgb(var(--goo-color));
+  animation: drop-fly .55s cubic-bezier(.15, .6, .3, 1) forwards;
+}
+@keyframes drop-fly {
+  to { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 0; }
+}
+
+/* Background WebGL2 Waves */
+a-waves {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  opacity: var(--waves-opacity);
+  transition: opacity .8s ease;
+}
+a-waves canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: rgb(var(--goo-color));
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-left: var(--page-pad-x);
+  padding-right: var(--page-pad-x);
+}
+
+/* Topbar */
+.topbar {
+  padding-top: var(--page-pad-y);
+  padding-bottom: var(--page-pad-y);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+.brand-group {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.brand {
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+.brand-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .24em;
+  color: var(--text-faint);
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.nav-link {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .16em;
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color .2s ease;
+  white-space: nowrap;
+}
+.nav-link:hover {
+  color: rgb(var(--goo-color));
+}
+
+.lang-switch {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  background: rgba(10, 10, 10, .6);
+}
+.lang-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color .2s ease, background .2s ease;
+}
+.lang-btn:hover { color: var(--text-dim); }
+.lang-btn.is-active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* Compact Hero */
+.hero {
+  padding-top: var(--sp-4);
+  padding-bottom: var(--sp-4);
+}
+.hero-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+.hero-tag {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  letter-spacing: .26em;
+  flex-wrap: wrap;
+}
+.emotion-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--goo-color));
+  box-shadow: 0 0 12px rgba(var(--goo-color), .55);
+  transition: background-color .8s ease, box-shadow .8s ease;
+  flex-shrink: 0;
+  animation: dot-breathe 2.6s ease-in-out infinite;
+}
+@keyframes dot-breathe {
+  0%, 100% { transform: scale(1); opacity: .95; }
+  50% { transform: scale(1.22); opacity: .65; }
+}
+.emotion-label {
+  color: rgb(var(--goo-color));
+  letter-spacing: .16em;
+  transition: color .8s ease;
+}
+.emotion-label::before {
+  content: '· ';
+  color: var(--text-faint);
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(17, 17, 19, .6);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .14em;
+  cursor: pointer;
+  transition: border-color .25s ease, color .25s ease, background .25s ease;
+}
+.live-badge:hover {
+  border-color: rgba(var(--goo-color), .45);
+  color: var(--text);
+}
+.live-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--c-calm));
+  transition: background-color .3s ease;
+}
+.live-badge.is-paused .live-indicator {
+  background: var(--text-faint);
+}
+.live-badge.is-error .live-indicator {
+  background: rgb(var(--c-alert));
+}
+.live-time {
+  color: var(--text-faint);
+}
+
+.hero-title-wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  flex-wrap: wrap;
+}
+.hero-title {
+  font-size: clamp(2.4rem, 6.2vw, 4.4rem);
+  font-weight: 900;
+  line-height: 1.04;
+  letter-spacing: .02em;
+  min-height: 1.04em;
+}
+.hero-title::after {
+  content: '_';
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--text-dim);
+  animation: caret-blink 1.1s step-end infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
+
+.hero-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  letter-spacing: .12em;
+  padding-bottom: 6px;
+}
+
+.hero-goo {
+  position: relative;
+  height: 28px;
+  margin-top: 4px;
+  filter: url(#goo);
+  opacity: var(--goo-opacity);
+  pointer-events: none;
+}
+.drip {
+  position: absolute;
+  top: 0;
+  border-radius: 50%;
+  background: rgb(var(--goo-color));
+  transition: background-color .8s ease;
+  animation: drip-fall 3.2s cubic-bezier(.5, 0, .8, .4) infinite;
+}
+.drip-1 { left: 8px;  width: 8px; height: 8px; animation-delay: 0s; }
+.drip-2 { left: 26px; width: 5px; height: 5px; animation-delay: 1.6s; }
+@keyframes drip-fall {
+  0%   { transform: translateY(0)    scaleY(1);   opacity: 0; }
+  8%   { opacity: 1; }
+  35%  { transform: translateY(6px)  scaleY(1.8); }
+  70%  { transform: translateY(18px) scaleY(1.1); opacity: 1; }
+  100% { transform: translateY(24px) scaleY(.6);  opacity: 0; }
+}
+
+/* 4-Column Cluster Summary Strip */
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin-top: var(--sp-2);
+}
+.summary-cell {
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.summary-cell + .summary-cell {
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--line);
+}
+.summary-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+.summary-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+.summary-sub {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hairline-track {
+  width: 100%;
+  height: 2px;
+  background: var(--line);
+  overflow: hidden;
+  border-radius: 2px;
+  margin-top: 2px;
+}
+.hairline-fill {
+  height: 100%;
+  width: 0%;
+  background: rgb(var(--goo-color));
+  transition: width .5s cubic-bezier(.2, .8, .2, 1), background-color .6s ease;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0;
+  flex-wrap: wrap;
+}
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--line);
+  margin: 0 4px;
+}
+.pill-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color .2s ease, border-color .2s ease, background .2s ease;
+}
+.pill-btn:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, .2);
+}
+.pill-btn.is-active {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+/* Server Container: List & Grid */
+.main-content {
+  flex: 1 1 auto;
+}
+.server-list {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--line);
+}
+.server-list.is-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--sp-4);
+  border-bottom: none;
+}
+
+.server-item {
+  border-top: 1px solid var(--line);
+  transition: background .25s ease, border-color .25s ease;
+}
+.server-list.is-grid .server-item {
+  border: 1px solid var(--line);
+  background: rgba(17, 17, 19, .45);
+}
+.server-item.is-offline {
+  opacity: .72;
+}
+
+.server-head {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 16px 8px;
+  display: grid;
+  grid-template-columns: minmax(210px, 1.45fr) repeat(3, minmax(84px, .65fr)) minmax(126px, .85fr) minmax(175px, 1.05fr) 24px;
+  align-items: center;
+  gap: var(--sp-3);
+  cursor: pointer;
+  transition: background .25s ease, padding-left .25s ease;
+}
+.server-list:not(.is-grid) .server-head:hover {
+  background: var(--bg-hover);
+  padding-left: 14px;
+}
+.server-list.is-grid .server-head {
+  grid-template-columns: 1fr auto;
+  padding: var(--sp-4);
+  gap: var(--sp-3);
+}
+.server-list.is-grid .server-head:hover {
+  background: var(--bg-hover);
+}
+
+/* Identity Cell */
+.srv-id {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.srv-title-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgb(var(--c-calm));
+  box-shadow: 0 0 10px rgba(var(--c-calm), .55);
+}
+.server-item.is-offline .status-dot {
+  background: rgb(var(--c-alert));
+  box-shadow: 0 0 10px rgba(var(--c-alert), .55);
+}
+.srv-alias {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tag-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.srv-sub-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.srv-os {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+.srv-os svg {
+  width: 12px;
+  height: 12px;
+  opacity: .75;
+}
+
+/* Metric Cells */
+.metric-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.metric-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.metric-k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  color: var(--text-faint);
+}
+.metric-v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.metric-sub {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.net-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  min-width: 0;
+}
+.net-rx { color: rgb(var(--c-calm)); }
+.net-tx { color: rgb(var(--c-cyan)); }
+
+/* ISP Latency Chips */
+.isp-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.isp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  background: rgba(10, 10, 10, .65);
+  white-space: nowrap;
+}
+.isp-name {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+.isp-ms {
+  font-weight: 700;
+}
+
+.srv-arrow {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  text-align: right;
+  transition: transform .3s ease, color .3s ease;
+}
+.server-head:hover .srv-arrow {
+  color: rgb(var(--goo-color));
+}
+.server-item.is-open .srv-arrow {
+  transform: rotate(90deg);
+  color: rgb(var(--goo-color));
+}
+
+/* Grid View Layout adjustments */
+.server-list.is-grid .srv-id {
+  grid-column: 1;
+}
+.server-list.is-grid .srv-arrow {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+.server-list.is-grid .grid-metrics-wrap {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line-soft);
+}
+.server-list.is-grid .net-cell {
+  grid-column: 1;
+  flex-direction: row;
+  gap: 12px;
+}
+.server-list.is-grid .isp-cell {
+  grid-column: 1 / -1;
+}
+.server-list.is-grid .spark-row {
+  grid-template-columns: 1fr;
+}
+.server-list.is-grid .detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Smooth Accordion Drawer */
+.drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .35s cubic-bezier(.4, 0, .2, 1);
+}
+.server-item.is-open .drawer {
+  grid-template-rows: 1fr;
+}
+.drawer-overflow {
+  overflow: hidden;
+}
+.drawer-inner {
+  padding: var(--sp-4) var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--line-soft);
+  background: rgba(17, 17, 19, .55);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* Sparklines */
+.spark-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.spark-card {
+  border: 1px solid var(--line);
+  background: rgba(10, 10, 10, .6);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.spark-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.spark-card > div:last-child {
+  margin-top: auto;
+}
+.spark-title {
+  color: var(--text-faint);
+  letter-spacing: .12em;
+}
+.spark-val {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.spark-svg {
+  width: 100%;
+  height: 40px;
+  display: block;
+}
+
+/* Detail KV Grid */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+.detail-cell {
+  background: rgba(10, 10, 10, .88);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.detail-k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+.detail-v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-word;
+}
+.detail-sub {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* Empty / Loading State */
+.empty-state {
+  padding: var(--sp-12) var(--sp-4);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: .16em;
+  color: var(--text-faint);
+  border-top: 1px solid var(--line);
+}
+
+/* Footer */
+.footer {
+  flex-shrink: 0;
+  padding-top: var(--sp-6);
+  padding-bottom: var(--page-pad-y);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: .12em;
+}
+
+@media (max-width: 1020px) {
+  .server-list:not(.is-grid) .server-head {
+    grid-template-columns: minmax(180px, 1.3fr) repeat(3, minmax(70px, .6fr)) minmax(105px, .8fr) 24px;
+  }
+  .server-list:not(.is-grid) .isp-cell {
+    grid-column: 1 / -2;
+    padding-top: 4px;
+  }
+  .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .summary-cell:nth-child(3) {
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+  .summary-cell:nth-child(4) {
+    border-top: 1px solid var(--line);
+  }
+  .server-list.is-grid {
+    grid-template-columns: 1fr;
+  }
+  .server-list:not(.is-grid) .server-head {
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+  .server-list:not(.is-grid) .metric-cell,
+  .server-list:not(.is-grid) .net-cell,
+  .server-list:not(.is-grid) .isp-cell {
+    grid-column: 1 / -1;
+  }
+  .server-list:not(.is-grid) .srv-arrow {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .spark-row {
+    grid-template-columns: 1fr;
+  }
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drip { animation: none; opacity: 0; }
+  .hero-title::after, .emotion-dot { animation: none; }
+  a-waves, .cursor-dot, .ripple-fx { display: none; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<a-waves aria-hidden="true"><canvas></canvas></a-waves>
+<lian-cursor class="cursor-dot" id="cursorDot" follow="0.18" aria-hidden="true"></lian-cursor>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="goo">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
+      <feColorMatrix in="blur" mode="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 19 -9" result="goo"/>
+      <feBlend in="SourceGraphic" in2="goo"/>
+    </filter>
+  </defs>
+</svg>
+
+<header class="topbar shell">
+  <div class="brand-group">
+    <a class="brand" href="https://heyuchick.com" data-i18n="brand">涟</a>
+    <span class="brand-sub">/ STATUS</span>
+  </div>
+  <div class="topbar-right">
+    <nav class="nav-links" aria-label="Navigation">
+      <a class="nav-link" href="https://heyuchick.com" data-i18n="nav.home">主页</a>
+      <a class="nav-link" href="https://connect.heyuchick.com" data-i18n="nav.proxy">代理</a>
+      <a class="nav-link" href="/detail" data-i18n="nav.detail">详情</a>
+      <a class="nav-link" href="/legacy" data-i18n="nav.legacy">原版</a>
+    </nav>
+    <div class="lang-switch" role="group" aria-label="Language / 语言 / 言語">
+      <button class="lang-btn is-active" data-lang="zh">中</button>
+      <button class="lang-btn" data-lang="en">EN</button>
+      <button class="lang-btn" data-lang="ja">日</button>
+    </div>
+  </div>
+</header>
+
+<section class="hero shell">
+  <div class="hero-meta-row">
+    <p class="hero-tag">
+      <span class="emotion-dot" aria-hidden="true"></span>
+      <span data-i18n="hero.tag">SPECIMEN-08 // INFRASTRUCTURE</span>
+      <span class="emotion-label" id="emotionLabel" data-i18n="health.loading">同步中</span>
+    </p>
+    <button class="live-badge" id="liveToggle" type="button" title="Toggle live polling">
+      <span class="live-indicator" aria-hidden="true"></span>
+      <span id="liveStateText">LIVE · 2s</span>
+      <span class="live-time" id="liveTimestamp">--:--:--</span>
+    </button>
+  </div>
+
+  <div class="hero-title-wrap">
+    <h1 class="hero-title" id="heroTitle">状态</h1>
+    <p class="hero-sub" id="heroSub" data-i18n="hero.sub">NODE TELEMETRY &amp; THREE-ISP PROBE</p>
+  </div>
+
+  <div class="hero-goo" aria-hidden="true">
+    <div class="drip drip-1"></div>
+    <div class="drip drip-2"></div>
+  </div>
+</section>
+
+<section class="shell">
+  <div class="summary-strip" id="summaryStrip">
+    <div class="summary-cell">
+      <span class="summary-label" data-i18n="sum.nodes">在线节点 / NODES</span>
+      <span class="summary-value" id="sumNodes">-- / --</span>
+      <span class="summary-sub" id="sumNodesSub">--</span>
+    </div>
+    <div class="summary-cell">
+      <span class="summary-label" data-i18n="sum.speed">实时总速率 / BANDWIDTH</span>
+      <span class="summary-value" id="sumSpeed">--</span>
+      <span class="summary-sub">
+        <span class="net-rx" id="sumRx">↓ --</span>
+        <span class="net-tx" id="sumTx">↑ --</span>
+      </span>
+    </div>
+    <div class="summary-cell">
+      <span class="summary-label" data-i18n="sum.traffic">本月总流量 / MONTHLY</span>
+      <span class="summary-value" id="sumTraffic">--</span>
+      <span class="summary-sub">
+        <span id="sumIn">↓ --</span>
+        <span id="sumOut">↑ --</span>
+      </span>
+    </div>
+    <div class="summary-cell">
+      <span class="summary-label" data-i18n="sum.compute">集群负载与内存 / LOAD &amp; RAM</span>
+      <span class="summary-value" id="sumCpu">--</span>
+      <span class="summary-sub" id="sumMem">--</span>
+      <div class="hairline-track"><div class="hairline-fill" id="sumMemBar"></div></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="toolbar-group" id="filterGroup">
+      <button class="pill-btn is-active" data-status="all" data-i18n="flt.all">全部</button>
+      <button class="pill-btn" data-status="online" data-i18n="flt.online">在线</button>
+      <button class="pill-btn" data-status="offline" data-i18n="flt.offline">离线</button>
+      <span class="toolbar-sep" id="regionSep" style="display:none"></span>
+      <div class="toolbar-group" id="regionGroup"></div>
+    </div>
+    <div class="toolbar-group">
+      <button class="pill-btn is-active" data-sort="weight" data-i18n="sort.weight">默认</button>
+      <button class="pill-btn" data-sort="cpu" data-i18n="sort.cpu">CPU</button>
+      <button class="pill-btn" data-sort="mem" data-i18n="sort.mem">内存</button>
+      <button class="pill-btn" data-sort="net" data-i18n="sort.net">网速</button>
+      <span class="toolbar-sep"></span>
+      <button class="pill-btn is-active" data-view="list" data-i18n="view.list">列表</button>
+      <button class="pill-btn" data-view="grid" data-i18n="view.grid">卡片</button>
+    </div>
+  </div>
+</section>
+
+<main class="main-content shell">
+  <div class="server-list" id="serverList">
+    <div class="empty-state" id="emptyState" data-i18n="state.loading">正在连接探针数据流...</div>
+  </div>
+</main>
+
+<footer class="footer shell">
+  <span>© 2026 LIAN / HEYUCHICK · SERVERSTATUS</span>
+  <span data-i18n="footer.note">SPECIMEN-08 · 保持湿润</span>
+</footer>
+
+<script>
+/* ============ 1. Lian Background Waves & Custom Cursor ============ */
+class Noise {
+  constructor(seed = Math.random()) {
+    this.p = new Uint8Array(256);
+    let s = Math.floor(seed * 256) || 1;
+    for (let i = 0; i < 256; i++) {
+      s = (s * 16807) % 2147483647;
+      this.p[i] = s % 256;
+    }
+  }
+  fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  lerp(a, b, t) { return a + t * (b - a); }
+  grad(h, x, y) {
+    const u = h < 4 ? x : y;
+    const v = h < 4 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+  }
+  perlin2(x, y) {
+    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+    x -= Math.floor(x); y -= Math.floor(y);
+    const u = this.fade(x), v = this.fade(y);
+    const A = this.p[X] + Y, B = this.p[(X + 1) & 255] + Y;
+    return this.lerp(
+      this.lerp(this.grad(this.p[A] & 7, x, y),
+                this.grad(this.p[B] & 7, x - 1, y), u),
+      this.lerp(this.grad(this.p[(A + 1) & 255] & 7, x, y - 1),
+                this.grad(this.p[(B + 1) & 255] & 7, x - 1, y - 1), u),
+      v) * 0.5;
+  }
+}
+
+class WaveGL {
+  constructor(gl) {
+    this.gl = gl;
+    const vertex = `#version 300 es
+      in vec2 aPrevious;
+      in vec2 aStart;
+      in vec2 aEnd;
+      in vec2 aNext;
+      uniform vec2 uSize;
+      uniform float uDpr;
+      uniform int uPitch;
+      out float vEdge;
+      vec2 direction(vec2 d, vec2 fallback) {
+        float l = length(d);
+        return l > 0.0001 ? d / l : fallback;
+      }
+      vec2 normal(vec2 d) { return vec2(-d.y, d.x); }
+      void main() {
+        if (gl_InstanceID % uPitch >= uPitch - 3) {
+          gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+          vEdge = 0.0;
+          return;
+        }
+        vec2 d = direction(aEnd - aStart, vec2(0.0, 1.0));
+        vec2 n = normal(d);
+        bool end = (gl_VertexID & 1) == 1;
+        vec2 adjacent = end ? direction(aNext - aEnd, d) : direction(aStart - aPrevious, d);
+        vec2 miter = direction(n + normal(adjacent), n);
+        miter /= max(dot(miter, n), 0.25);
+        vEdge = (gl_VertexID < 2 ? -1.0 : 1.0) * (0.5 + 0.5 / uDpr);
+        vec2 p = (end ? aEnd : aStart) + miter * vEdge;
+        gl_Position = vec4(p / uSize * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0);
+      }`;
+    const fragment = `#version 300 es
+      precision highp float;
+      uniform vec3 uColor;
+      uniform float uDpr;
+      in float vEdge;
+      out vec4 color;
+      void main() {
+        float a = clamp((0.5 + 0.5 / uDpr - abs(vEdge)) * uDpr, 0.0, 1.0);
+        color = vec4(uColor * a, a);
+      }`;
+    this.program = gl.createProgram();
+    for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]]) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        this.dispose();
+        throw new Error(message);
+      }
+      gl.attachShader(this.program, shader);
+      gl.deleteShader(shader);
+    }
+    gl.linkProgram(this.program);
+    if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
+      const message = gl.getProgramInfoLog(this.program);
+      this.dispose();
+      throw new Error(message);
+    }
+    gl.useProgram(this.program);
+    this.size = gl.getUniformLocation(this.program, 'uSize');
+    this.dpr = gl.getUniformLocation(this.program, 'uDpr');
+    this.pitch = gl.getUniformLocation(this.program, 'uPitch');
+    this.color = gl.getUniformLocation(this.program, 'uColor');
+    this.buffer = gl.createBuffer();
+    this.vao = gl.createVertexArray();
+    gl.bindVertexArray(this.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+    ['aPrevious', 'aStart', 'aEnd', 'aNext'].forEach((name, i) => {
+      const location = gl.getAttribLocation(this.program, name);
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 8, i * 8);
+      gl.vertexAttribDivisor(location, 1);
+    });
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.MAX);
+  }
+  resize(width, height, dpr, positions, pitch) {
+    const gl = this.gl;
+    gl.canvas.width = Math.round(width * dpr);
+    gl.canvas.height = Math.round(height * dpr);
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.uniform2f(this.size, width, height);
+    gl.uniform1f(this.dpr, dpr);
+    gl.uniform1i(this.pitch, pitch);
+    gl.bufferData(gl.ARRAY_BUFFER, positions.byteLength, gl.DYNAMIC_DRAW);
+  }
+  draw(positions, color) {
+    const gl = this.gl;
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform3fv(this.color, color);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, positions.length / 2 - 3);
+  }
+  dispose() {
+    const gl = this.gl;
+    gl.deleteVertexArray(this.vao ?? null);
+    gl.deleteBuffer(this.buffer ?? null);
+    gl.deleteProgram(this.program);
+  }
+}
+
+class WaveCanvas {
+  constructor(canvas) {
+    this.ctx = canvas.getContext('2d');
+  }
+  resize(width, height, dpr, positions, pitch) {
+    const ctx = this.ctx;
+    ctx.canvas.width = Math.round(width * dpr);
+    ctx.canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.width = width;
+    this.height = height;
+    this.pitch = pitch;
+  }
+  draw(positions, color) {
+    const ctx = this.ctx, stride = this.pitch * 2;
+    ctx.clearRect(0, 0, this.width, this.height);
+    ctx.strokeStyle = `rgb(${color[0] * 255} ${color[1] * 255} ${color[2] * 255})`;
+    ctx.beginPath();
+    for (let line = 0; line < positions.length; line += stride) {
+      ctx.moveTo(positions[line + 2], positions[line + 3]);
+      for (let i = line + 4; i < line + stride - 2; i += 2) ctx.lineTo(positions[i], positions[i + 1]);
+    }
+    ctx.stroke();
+  }
+  dispose() {}
+}
+
+class AWaves extends HTMLElement {
+  constructor() {
+    super();
+    this.noise = new Noise();
+    this.mouse = { x: 0, y: 0, sx: 0, sy: 0, lx: 0, ly: 0, vs: 0, dx: 0, dy: 0, set: false };
+    this.frame = 0;
+    this.time = 0;
+    this.lastTime = 0;
+    this.reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    this.tick = this.tick.bind(this);
+    this.sync = this.sync.bind(this);
+    this.resizeNeeded = true;
+    this.colorNeeded = true;
+    this.color = new Float32Array([1, 1, 1]);
+    this.colorFrom = this.color.slice();
+    this.colorTo = this.color.slice();
+  }
+  connectedCallback() {
+    this.events = new AbortController();
+    const signal = this.events.signal;
+    window.addEventListener('pointermove', e => {
+      const mouse = this.mouse;
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      if (!mouse.set) {
+        mouse.sx = mouse.lx = mouse.x;
+        mouse.sy = mouse.ly = mouse.y;
+        mouse.set = true;
+      }
+    }, { passive: true, signal });
+    document.addEventListener('pointerleave', () => {
+      this.mouse.set = false;
+      this.mouse.vs = 0;
+    }, { signal });
+    window.addEventListener('resize', () => { this.resizeNeeded = true; }, { passive: true, signal });
+    document.addEventListener('visibilitychange', this.sync, { signal });
+    this.reduced.addEventListener('change', this.sync, { signal });
+    this.addEventListener('webglcontextlost', e => {
+      e.preventDefault();
+      this.lost = true;
+      this.sync();
+    }, { capture: true, signal });
+    this.addEventListener('webglcontextrestored', () => {
+      this.lost = false;
+      this.renderer = null;
+      this.resizeNeeded = true;
+      this.sync();
+    }, { capture: true, signal });
+    this.resizeObserver = new ResizeObserver(() => { this.resizeNeeded = true; });
+    this.resizeObserver.observe(this);
+    this.colorObserver = new MutationObserver(() => { this.colorNeeded = true; });
+    this.colorObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    this.colorNeeded = true;
+    this.resizeNeeded = true;
+    this.sync();
+  }
+  disconnectedCallback() {
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.lastTime = 0;
+    this.events.abort();
+    this.resizeObserver.disconnect();
+    this.colorObserver.disconnect();
+    queueMicrotask(() => {
+      if (!this.isConnected) {
+        this.renderer?.dispose();
+        this.renderer = null;
+      }
+    });
+  }
+  sync() {
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.lastTime = 0;
+    if (this.isConnected && !document.hidden && !this.reduced.matches && !this.lost) {
+      this.frame = requestAnimationFrame(this.tick);
+    }
+  }
+  initRenderer() {
+    this.canvas = this.querySelector('canvas');
+    const gl = this.canvas.getContext('webgl2', { antialias: false, depth: false });
+    const info = gl?.getExtension('WEBGL_debug_renderer_info');
+    const software = info && /SwiftShader|llvmpipe|softpipe|Software/i.test(gl.getParameter(info.UNMASKED_RENDERER_WEBGL));
+    if (gl && !software) {
+      try {
+        this.renderer = new WaveGL(gl);
+      } catch (error) {
+        console.warn(error);
+      }
+    }
+    if (!this.renderer) {
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+      const canvas = this.canvas.cloneNode(false);
+      this.canvas.replaceWith(canvas);
+      this.canvas = canvas;
+      this.renderer = new WaveCanvas(canvas);
+    }
+  }
+  setSize() {
+    const { width, height, left, top } = this.getBoundingClientRect();
+    const dpr = devicePixelRatio;
+    const columns = Math.ceil((width + 200) / 14) + 1;
+    const rows = Math.ceil((height + 30) / 36) + 1;
+    const pitch = rows + 2;
+    if (this.width !== width || this.height !== height || !this.points) {
+      this.points = new Float32Array(columns * rows * 6);
+      this.positions = new Float32Array(columns * pitch * 2);
+      const xStart = (width - 14 * (columns - 1)) / 2;
+      const yStart = (height - 36 * (rows - 1)) / 2;
+      for (let x = 0; x < columns; x++) {
+        for (let y = 0; y < rows; y++) {
+          const p = (x * rows + y) * 6;
+          this.points[p] = xStart + x * 14;
+          this.points[p + 1] = yStart + y * 36;
+        }
+      }
+    }
+    Object.assign(this, { width, height, left, top, dpr, rows, columns, pitch });
+    this.renderer.resize(width, height, dpr, this.positions, pitch);
+    this.resizeNeeded = false;
+  }
+  pulse(cx, cy, strength = 1.6, radius = 220) {
+    if (!this.points || this.reduced.matches) return;
+    const points = this.points;
+    const x = cx - this.left, y = cy - this.top;
+    for (let i = 0; i < points.length; i += 6) {
+      const dx = points[i] - x, dy = points[i + 1] - y;
+      const d = Math.hypot(dx, dy);
+      if (d < radius && d > 0.001) {
+        const f = (1 - d / radius) * strength / d;
+        points[i + 4] += dx * f;
+        points[i + 5] += dy * f;
+      }
+    }
+  }
+  movePoints(dt) {
+    const mouse = this.mouse, points = this.points;
+    const mx = mouse.sx - this.left, my = mouse.sy - this.top;
+    const forceX = mouse.dx * mouse.vs * 0.11375;
+    const forceY = mouse.dy * mouse.vs * 0.11375;
+    const steps = Math.ceil(dt), step = dt / steps;
+    const friction = Math.pow(0.925, step);
+    for (let i = 0; i < points.length; i += 6) {
+      let x = points[i + 2], y = points[i + 3], vx = points[i + 4], vy = points[i + 5];
+      const dx = points[i] - mx, dy = points[i + 1] - my;
+      const distance = dx * dx + dy * dy;
+      let force = 0;
+      if (mouse.set && distance < 30625) {
+        const d = Math.sqrt(distance);
+        force = Math.cos(d * 0.001) * (1 - d / 175);
+      }
+      for (let stepIndex = 0; stepIndex < steps; stepIndex++) {
+        vx = (vx + (forceX * force - x * 0.005) * step) * friction;
+        vy = (vy + (forceY * force - y * 0.005) * step) * friction;
+        x += vx * 2 * step;
+        y += vy * 2 * step;
+        if (Math.abs(x) > 100) { x = Math.sign(x) * 100; if (vx * x > 0) vx = 0; }
+        if (Math.abs(y) > 100) { y = Math.sign(y) * 100; if (vy * y > 0) vy = 0; }
+      }
+      points[i + 2] = x; points[i + 3] = y;
+      points[i + 4] = vx; points[i + 5] = vy;
+    }
+  }
+  drawPositions() {
+    const points = this.points, positions = this.positions;
+    const tx = this.time * 0.0125, ty = this.time * 0.005;
+    for (let column = 0; column < this.columns; column++) {
+      const start = column * this.pitch * 2;
+      for (let row = 0; row < this.rows; row++) {
+        const p = (column * this.rows + row) * 6;
+        const move = this.noise.perlin2((points[p] + tx) * 0.002, (points[p + 1] + ty) * 0.0015) * 12;
+        const free = row > 0 && row < this.rows - 1;
+        const out = start + (row + 1) * 2;
+        positions[out] = points[p] + Math.cos(move) * 32 + (free ? points[p + 2] : 0);
+        positions[out + 1] = points[p + 1] + Math.sin(move) * 16 + (free ? points[p + 3] : 0);
+      }
+      positions[start] = positions[start + 2];
+      positions[start + 1] = positions[start + 3];
+      const end = start + (this.pitch - 1) * 2;
+      positions[end] = positions[end - 2];
+      positions[end + 1] = positions[end - 1];
+    }
+  }
+  updateColor() {
+    if (this.colorNeeded) {
+      const m = getComputedStyle(this.canvas).color.match(/[\d.]+/g);
+      if (m && m.length >= 3) {
+        const rgb = m.slice(0, 3).map(n => Number(n) / 255);
+        this.colorFrom.set(this.color);
+        this.colorTo.set(rgb);
+        this.colorStart = this.time;
+        if (!this.colored) { this.color.set(rgb); this.colorFrom.set(rgb); this.colored = true; }
+      }
+      this.colorNeeded = false;
+    }
+    const t = Math.min(1, (this.time - (this.colorStart || 0)) / 800);
+    let x = t;
+    for (let i = 0; i < 5; i++) x -= ((1.75 * x - 0.75) * x * x + 0.75 * x - t) / ((5.25 * x - 1.5) * x + 0.75);
+    const eased = ((-1.7 * x + 2.4) * x + 0.3) * x;
+    for (let i = 0; i < 3; i++) this.color[i] = this.colorFrom[i] + (this.colorTo[i] - this.colorFrom[i]) * eased;
+  }
+  tick(now) {
+    this.frame = 0;
+    if (!this.renderer) { this.initRenderer(); this.resizeNeeded = true; }
+    if (this.resizeNeeded || this.dpr !== devicePixelRatio) this.setSize();
+    const elapsed = this.lastTime ? Math.min(50, now - this.lastTime) : 1000 / 60;
+    this.lastTime = now;
+    this.time += elapsed;
+    this.updateColor();
+    const dt = elapsed * 0.06;
+    const mouse = this.mouse;
+    const smooth = 1 - Math.pow(0.9, dt);
+    mouse.sx += (mouse.x - mouse.sx) * smooth;
+    mouse.sy += (mouse.y - mouse.sy) * smooth;
+    const dx = mouse.x - mouse.lx, dy = mouse.y - mouse.ly;
+    const distance = Math.hypot(dx, dy);
+    mouse.vs += (distance / dt - mouse.vs) * smooth;
+    mouse.vs = Math.min(100, mouse.vs);
+    if (distance > 0) { mouse.dx = dx / distance; mouse.dy = dy / distance; }
+    mouse.lx = mouse.x; mouse.ly = mouse.y;
+    this.movePoints(dt);
+    this.drawPositions();
+    this.renderer.draw(this.positions, this.color);
+    this.frame = requestAnimationFrame(this.tick);
+  }
+}
+customElements.define('a-waves', AWaves);
+
+class LianCursor extends HTMLElement {
+  constructor() {
+    super();
+    this.frame = 0;
+    this.x = this.y = NaN;
+    this.tx = this.ty = 0;
+    this.lastTime = 0;
+    this.motion = matchMedia('(prefers-reduced-motion: reduce)');
+    this.pointer = matchMedia('(any-pointer: fine)');
+    this.follow = this.follow.bind(this);
+    this.sync = this.sync.bind(this);
+  }
+  connectedCallback() {
+    this.events = new AbortController();
+    const signal = this.events.signal;
+    this.factor = Number(this.getAttribute('follow') || 0.2);
+    document.addEventListener('pointermove', e => {
+      if (!this.enabled || e.pointerType === 'touch') return;
+      this.tx = e.clientX;
+      this.ty = e.clientY;
+      if (Number.isNaN(this.x)) { this.x = this.tx; this.y = this.ty; }
+      this.classList.add('visible');
+      this.start();
+    }, { passive: true, signal });
+    document.addEventListener('pointerover', e => {
+      if (!(e.target instanceof Element)) return;
+      const interactive = !!e.target.closest('a, button, [data-cursor="hover"], .server-head');
+      this.classList.toggle('hovering', interactive);
+    }, { signal });
+    const hide = () => {
+      this.classList.remove('visible');
+      this.x = this.y = NaN;
+      this.stop();
+    };
+    document.addEventListener('pointerleave', hide, { signal });
+    window.addEventListener('blur', hide, { signal });
+    document.addEventListener('visibilitychange', this.sync, { signal });
+    this.motion.addEventListener('change', this.sync, { signal });
+    this.pointer.addEventListener('change', this.sync, { signal });
+    this.sync();
+  }
+  disconnectedCallback() {
+    this.events.abort();
+    this.stop();
+    document.documentElement.classList.remove('has-cursor');
+  }
+  sync() {
+    this.enabled = this.pointer.matches && !this.motion.matches;
+    document.documentElement.classList.toggle('has-cursor', this.enabled);
+    if (!this.enabled || document.hidden) {
+      this.classList.remove('visible');
+      this.x = this.y = NaN;
+      this.stop();
+    } else if (this.classList.contains('visible')) {
+      this.start();
+    }
+  }
+  start() {
+    if (!this.frame && !document.hidden) this.frame = requestAnimationFrame(this.follow);
+  }
+  stop() {
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.lastTime = 0;
+  }
+  follow(now) {
+    this.frame = 0;
+    const dt = this.lastTime ? Math.min(50, now - this.lastTime) * 0.06 : 1;
+    this.lastTime = now;
+    const factor = 1 - Math.pow(1 - this.factor, dt);
+    this.x += (this.tx - this.x) * factor;
+    this.y += (this.ty - this.y) * factor;
+    const moving = Math.abs(this.tx - this.x) + Math.abs(this.ty - this.y) > 0.01;
+    if (!moving) { this.x = this.tx; this.y = this.ty; this.lastTime = 0; }
+    this.style.transform = `translate3d(${this.x}px, ${this.y}px, 0)`;
+    if (moving) this.start();
+  }
+}
+customElements.define('lian-cursor', LianCursor);
+
+/* ============ 2. I18N Dictionary (zh / en / ja) ============ */
+const I18N = {
+  zh: {
+    _lang: 'zh-CN',
+    _title: '状态 · 涟 Lian',
+    'brand': '涟',
+    'nav.home': '主页',
+    'nav.proxy': '代理',
+    'nav.detail': '详情',
+    'nav.legacy': '原版',
+    'hero.tag': 'SPECIMEN-08 // INFRASTRUCTURE',
+    'hero.title': '状态',
+    'hero.sub': '节点遥测与三网延迟探测 · 实时监控',
+    'health.loading': '同步中',
+    'health.calm': '全部在线',
+    'health.active': '运行活跃',
+    'health.moderate': '中等负载',
+    'health.high': '高负载',
+    'health.offline': '部分离线',
+    'health.error': '连接中断',
+    'live.on': 'LIVE · 2s',
+    'live.paused': 'PAUSED',
+    'sum.nodes': '在线节点 / NODES',
+    'sum.speed': '实时总速率 / BANDWIDTH',
+    'sum.traffic': '本月总流量 / MONTHLY',
+    'sum.compute': '集群负载与内存 / LOAD & RAM',
+    'sum.nodes.all': '全节点正常心跳',
+    'sum.nodes.off': '节点离线',
+    'flt.all': '全部',
+    'flt.online': '在线',
+    'flt.offline': '离线',
+    'sort.weight': '默认',
+    'sort.cpu': 'CPU',
+    'sort.mem': '内存',
+    'sort.net': '网速',
+    'view.list': '列表',
+    'view.grid': '卡片',
+    'state.loading': '正在连接探针数据流...',
+    'state.empty': '当前筛选条件下没有匹配的节点',
+    'state.error': '无法获取 /json/stats.json，将在后台自动重试',
+    'footer.note': 'SPECIMEN-08 · 保持湿润',
+    'lbl.uptime': '在线',
+    'lbl.cpu': 'CPU',
+    'lbl.ram': '内存',
+    'lbl.disk': '磁盘',
+    'lbl.load': '负载',
+    'lbl.none': '未配置',
+    'lbl.timeout': '超时',
+    'isp.ct': '电',
+    'isp.cu': '联',
+    'isp.cm': '移',
+    'isp.ct.full': '中国电信 (189)',
+    'isp.cu.full': '中国联通 (10010)',
+    'isp.cm.full': '中国移动 (10086)',
+    'spark.cpu': 'CPU 使用率 (近 60 次采样)',
+    'spark.mem': '内存占用 (近 60 次采样)',
+    'spark.net': '实时网络速率 (↓/↑)',
+    'kv.load': '系统负载 (1/5/15m)',
+    'kv.mem': '物理内存 / SWAP',
+    'kv.disk': '磁盘空间',
+    'kv.monthly': '本月已用流量',
+    'kv.total': '累计总流量',
+    'kv.conn': '连接与进程',
+    'kv.isp': '三网探测详情',
+    'kv.meta': '协议栈与主机信息',
+    'kv.ndd': '到期',
+    'kv.days': '天',
+    'kv.beat': '心跳延迟',
+  },
+  en: {
+    _lang: 'en',
+    _title: 'Status · Lian',
+    'brand': 'Lian',
+    'nav.home': 'Home',
+    'nav.proxy': 'Proxy',
+    'nav.detail': 'Detail',
+    'nav.legacy': 'Legacy',
+    'hero.tag': 'SPECIMEN-08 // INFRASTRUCTURE',
+    'hero.title': 'Status',
+    'hero.sub': 'NODE TELEMETRY & THREE-ISP PROBE',
+    'health.loading': 'SYNCING',
+    'health.calm': 'ALL ONLINE',
+    'health.active': 'ACTIVE',
+    'health.moderate': 'MODERATE',
+    'health.high': 'HIGH LOAD',
+    'health.offline': 'DEGRADED',
+    'health.error': 'DISCONNECTED',
+    'live.on': 'LIVE · 2s',
+    'live.paused': 'PAUSED',
+    'sum.nodes': 'ONLINE NODES',
+    'sum.speed': 'TOTAL BANDWIDTH',
+    'sum.traffic': 'MONTHLY TRAFFIC',
+    'sum.compute': 'AVG CPU & MEMORY',
+    'sum.nodes.all': 'All heartbeats nominal',
+    'sum.nodes.off': 'node(s) offline',
+    'flt.all': 'ALL',
+    'flt.online': 'ONLINE',
+    'flt.offline': 'OFFLINE',
+    'sort.weight': 'DEFAULT',
+    'sort.cpu': 'CPU',
+    'sort.mem': 'RAM',
+    'sort.net': 'SPEED',
+    'view.list': 'LIST',
+    'view.grid': 'GRID',
+    'state.loading': 'Connecting to telemetry stream...',
+    'state.empty': 'No nodes match current filters',
+    'state.error': 'Failed to fetch /json/stats.json — retrying...',
+    'footer.note': 'SPECIMEN-08 · STAY HYDRATED',
+    'lbl.uptime': 'UP',
+    'lbl.cpu': 'CPU',
+    'lbl.ram': 'RAM',
+    'lbl.disk': 'DISK',
+    'lbl.load': 'LOAD',
+    'lbl.none': 'None',
+    'lbl.timeout': 'TIMEOUT',
+    'isp.ct': 'CT',
+    'isp.cu': 'CU',
+    'isp.cm': 'CM',
+    'isp.ct.full': 'China Telecom (189)',
+    'isp.cu.full': 'China Unicom (10010)',
+    'isp.cm.full': 'China Mobile (10086)',
+    'spark.cpu': 'CPU % (LAST 60 SAMPLES)',
+    'spark.mem': 'MEMORY % (LAST 60 SAMPLES)',
+    'spark.net': 'NETWORK SPEED (↓/↑)',
+    'kv.load': 'LOAD AVG (1/5/15m)',
+    'kv.mem': 'MEMORY / SWAP',
+    'kv.disk': 'DISK STORAGE',
+    'kv.monthly': 'MONTHLY TRAFFIC',
+    'kv.total': 'LIFETIME TRAFFIC',
+    'kv.conn': 'SOCKETS & PROCS',
+    'kv.isp': 'THREE-ISP PROBE',
+    'kv.meta': 'STACK & HOST META',
+    'kv.ndd': 'DUE',
+    'kv.days': 'd',
+    'kv.beat': 'HEARTBEAT',
+  },
+  ja: {
+    _lang: 'ja',
+    _title: 'ステータス · リアン Lian',
+    'brand': 'リアン',
+    'nav.home': 'ホーム',
+    'nav.proxy': 'プロキシ',
+    'nav.detail': '詳細',
+    'nav.legacy': '旧版',
+    'hero.tag': 'SPECIMEN-08 // INFRASTRUCTURE',
+    'hero.title': 'ステータス',
+    'hero.sub': 'ノード監視・中国三大キャリア遅延計測',
+    'health.loading': '同期中',
+    'health.calm': '全機オンライン',
+    'health.active': '稼働中',
+    'health.moderate': '中負荷',
+    'health.high': '高負荷',
+    'health.offline': '一部オフライン',
+    'health.error': '接続断',
+    'live.on': 'LIVE · 2s',
+    'live.paused': 'PAUSED',
+    'sum.nodes': 'オンライン / NODES',
+    'sum.speed': '合計帯域 / BANDWIDTH',
+    'sum.traffic': '今月の通信量 / MONTHLY',
+    'sum.compute': '平均負荷・メモリ',
+    'sum.nodes.all': '全ノード正常稼働中',
+    'sum.nodes.off': '台オフライン',
+    'flt.all': 'すべて',
+    'flt.online': 'オンライン',
+    'flt.offline': 'オフライン',
+    'sort.weight': '標準',
+    'sort.cpu': 'CPU',
+    'sort.mem': 'メモリ',
+    'sort.net': '速度',
+    'view.list': 'リスト',
+    'view.grid': 'グリッド',
+    'state.loading': 'テレメトリストリームに接続中...',
+    'state.empty': '条件に一致するノードがありません',
+    'state.error': '/json/stats.json の取得に失敗しました（再試行中）',
+    'footer.note': 'SPECIMEN-08 · 潤いを忘れずに',
+    'lbl.uptime': '稼働',
+    'lbl.cpu': 'CPU',
+    'lbl.ram': 'メモリ',
+    'lbl.disk': 'ディスク',
+    'lbl.load': '負荷',
+    'lbl.none': '未設定',
+    'lbl.timeout': 'タイムアウト',
+    'isp.ct': '電信',
+    'isp.cu': '聯通',
+    'isp.cm': '移動',
+    'isp.ct.full': '中国電信 (189)',
+    'isp.cu.full': '中国聯通 (10010)',
+    'isp.cm.full': '中国移動 (10086)',
+    'spark.cpu': 'CPU 使用率 (直近 60 サンプル)',
+    'spark.mem': 'メモリ使用率 (直近 60 サンプル)',
+    'spark.net': '通信速度 (↓/↑)',
+    'kv.load': 'ロードアベレージ (1/5/15m)',
+    'kv.mem': 'メモリ / SWAP',
+    'kv.disk': 'ストレージ',
+    'kv.monthly': '今月の通信量',
+    'kv.total': '累計通信量',
+    'kv.conn': '接続・プロセス',
+    'kv.isp': '三大キャリア遅延',
+    'kv.meta': 'スタック・ホスト情報',
+    'kv.ndd': '更新日',
+    'kv.days': '日',
+    'kv.beat': '応答遅延',
+  }
+};
+
+/* ============ 3. Emotion & Ambient Color Engine ============ */
+const HEALTH_STAGES = {
+  calm:     { color: '94, 234, 212',  waves: '.16', key: 'health.calm' },
+  active:   { color: '103, 232, 249', waves: '.18', key: 'health.active' },
+  moderate: { color: '167, 139, 250', waves: '.21', key: 'health.moderate' },
+  high:     { color: '244, 114, 182', waves: '.25', key: 'health.high' },
+  offline:  { color: '248, 113, 113', waves: '.28', key: 'health.offline' },
+  error:    { color: '248, 113, 113', waves: '.28', key: 'health.error' },
+  loading:  { color: '255, 255, 255', waves: '.14', key: 'health.loading' }
+};
+
+let currentLang = 'zh';
+let currentHealthKey = 'loading';
+let clickEnergy = 0;
+let clickTimer = 0;
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
+const emotionLabel = document.getElementById('emotionLabel');
+const titleEl = document.getElementById('heroTitle');
+let typeTimer = null;
+
+function applyAmbientTheme() {
+  const stage = HEALTH_STAGES[currentHealthKey] || HEALTH_STAGES.loading;
+  let color = stage.color;
+  let waves = stage.waves;
+  // Brief bioluminescent pulse on interactive clicks when cluster is healthy
+  if (clickEnergy > 20 && currentHealthKey !== 'offline' && currentHealthKey !== 'error') {
+    if (clickEnergy > 65) { color = '244, 114, 182'; waves = '.24'; }
+    else if (clickEnergy > 40) { color = '167, 139, 250'; waves = '.22'; }
+    else { color = '103, 232, 249'; waves = '.20'; }
+  }
+  document.documentElement.style.setProperty('--goo-color', color);
+  document.documentElement.style.setProperty('--waves-opacity', waves);
+  emotionLabel.textContent = I18N[currentLang][stage.key] || stage.key;
+}
+
+function decayClickEnergy() {
+  clickTimer = 0;
+  clickEnergy = Math.max(0, clickEnergy - 4);
+  applyAmbientTheme();
+  if (clickEnergy > 0 && !document.hidden) {
+    clickTimer = setTimeout(decayClickEnergy, 350);
+  }
+}
+
+function spawnRipple(x, y) {
+  const fx = document.createElement('div');
+  fx.className = 'ripple-fx';
+  fx.style.left = `${x}px`;
+  fx.style.top = `${y}px`;
+  const ring1 = document.createElement('div');
+  ring1.className = 'ripple-ring';
+  const ring2 = document.createElement('div');
+  ring2.className = 'ripple-ring ripple-ring-2';
+  fx.appendChild(ring1);
+  fx.appendChild(ring2);
+
+  const goo = document.createElement('div');
+  goo.className = 'ripple-goo';
+  for (let i = 0; i < 5; i++) {
+    const drop = document.createElement('div');
+    drop.className = 'ripple-drop';
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 20 + Math.random() * 24;
+    drop.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    drop.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+    drop.style.animationDelay = `${Math.random() * 0.06}s`;
+    const size = 5 + Math.random() * 5;
+    drop.style.width = `${size}px`;
+    drop.style.height = `${size}px`;
+    goo.appendChild(drop);
+  }
+  fx.appendChild(goo);
+  document.body.appendChild(fx);
+  ring2.addEventListener('animationend', () => fx.remove(), { once: true });
+  ring2.addEventListener('animationcancel', () => fx.remove(), { once: true });
+  const waves = document.querySelector('a-waves');
+  if (waves && typeof waves.pulse === 'function') waves.pulse(x, y);
+}
+
+window.addEventListener('pointerdown', e => {
+  if (motion.matches || document.hidden) return;
+  clickEnergy = Math.min(100, clickEnergy + 18);
+  if (!clickTimer) clickTimer = setTimeout(decayClickEnergy, 350);
+  applyAmbientTheme();
+  spawnRipple(e.clientX, e.clientY);
+}, { passive: true });
+
+/* ============ 4. Typewriter & I18N Switching ============ */
+function typeTitle(text) {
+  clearTimeout(typeTimer);
+  if (motion.matches) {
+    titleEl.textContent = text;
+    return;
+  }
+  const current = titleEl.textContent;
+  let i = current.length;
+  (function erase() {
+    if (i > 0) {
+      titleEl.textContent = current.slice(0, --i);
+      typeTimer = setTimeout(erase, 45);
+      return;
+    }
+    let j = 0;
+    (function type() {
+      if (j <= text.length) {
+        titleEl.textContent = text.slice(0, j++);
+        typeTimer = setTimeout(type, 110);
+      }
+    })();
+  })();
+}
+
+const langBtns = document.querySelectorAll('.lang-btn');
+function setLang(lang, initial = false) {
+  const dict = I18N[lang];
+  if (!dict) return;
+  currentLang = lang;
+  document.documentElement.lang = dict._lang;
+  document.title = dict._title;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key === 'hero.title' || key === 'health.loading') return;
+    if (dict[key] !== undefined) el.textContent = dict[key];
+  });
+  if (initial) {
+    titleEl.textContent = dict['hero.title'];
+  } else {
+    typeTitle(dict['hero.title']);
+  }
+  langBtns.forEach(b => b.classList.toggle('is-active', b.dataset.lang === lang));
+  localStorage.setItem('lian-lang', lang);
+  applyAmbientTheme();
+  updateLiveBadgeText();
+  if (lastStatsPayload) renderAll(lastStatsPayload);
+}
+
+langBtns.forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
+
+/* ============ 5. Telemetry Helpers & Unit Formatting ============ */
+function t(key) {
+  return (I18N[currentLang] && I18N[currentLang][key]) || I18N.zh[key] || key;
+}
+
+function formatBytes(bytes, decimals = 2) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const k = 1024;
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
+  const v = bytes / Math.pow(k, i);
+  const dp = i === 0 ? 0 : (v >= 100 ? 1 : decimals);
+  return `${v.toFixed(dp)} ${units[i]}`;
+}
+
+function formatSpeed(bps) {
+  if (!Number.isFinite(bps) || bps <= 0) return '0 B/s';
+  const k = 1024;
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bps) / Math.log(k)));
+  const v = bps / Math.pow(k, i);
+  const dp = i === 0 ? 0 : (v >= 100 ? 0 : 1);
+  return `${v.toFixed(dp)} ${units[i]}`;
+}
+
+function parseLabels(raw) {
+  const res = {};
+  if (!raw || typeof raw !== 'string') return res;
+  for (const part of raw.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx > 0) {
+      const k = part.slice(0, idx).trim().toLowerCase();
+      const v = part.slice(idx + 1).trim();
+      if (k && v) res[k] = v;
+    }
+  }
+  return res;
+}
+
+function formatOsName(osRaw) {
+  if (!osRaw) return '';
+  const map = {
+    debian: 'Debian',
+    ubuntu: 'Ubuntu',
+    almalinux: 'AlmaLinux',
+    centos: 'CentOS',
+    alpine: 'Alpine',
+    arch: 'Arch',
+    rocky: 'Rocky',
+    windows: 'Windows',
+    macos: 'macOS',
+    freebsd: 'FreeBSD',
+    linux: 'Linux'
+  };
+  return map[osRaw.toLowerCase()] || osRaw;
+}
+
+function osIconSvg(osRaw) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.4');
+  svg.setAttribute('aria-hidden', 'true');
+  const os = (osRaw || '').toLowerCase();
+  const path = document.createElementNS(ns, 'path');
+  if (os === 'debian') {
+    path.setAttribute('d', 'M8.5 13.5c-3.6 0-5.8-2.4-5.8-5.6 0-3 2.4-5.4 5.5-5.4 2.8 0 4.8 1.9 4.8 4.4 0 2-1.4 3.4-3.3 3.4-1.5 0-2.6-1-2.6-2.4 0-1.2.9-2.1 2.1-2.1');
+  } else if (os === 'almalinux' || os === 'centos' || os === 'rocky') {
+    path.setAttribute('d', 'M8 2l5.2 3v6L8 14l-5.2-3V5L8 2zm0 3.2L10.4 8 8 10.8 5.6 8 8 5.2z');
+  } else {
+    path.setAttribute('d', 'M3 4.5h10v7H3zM5.5 13.5h5');
+  }
+  svg.appendChild(path);
+  return svg;
+}
+
+function usageColor(pct) {
+  if (pct >= 88) return 'rgb(var(--c-alert))';
+  if (pct >= 72) return 'rgb(var(--c-pink))';
+  if (pct >= 50) return 'rgb(var(--c-violet))';
+  if (pct >= 25) return 'rgb(var(--c-cyan))';
+  return 'rgb(var(--c-calm))';
+}
+
+function latencyColor(ms, loss) {
+  if (loss >= 99.9) return 'rgb(var(--c-alert))';
+  if (ms < 60) return 'rgb(var(--c-calm))';
+  if (ms < 160) return 'rgb(var(--c-cyan))';
+  if (ms < 260) return 'rgb(var(--c-violet))';
+  return 'rgb(var(--c-pink))';
+}
+
+function monthlyTraffic(s) {
+  const mIn = (s.last_network_in > 0 && s.network_in >= s.last_network_in)
+    ? (s.network_in - s.last_network_in)
+    : (s.network_in || 0);
+  const mOut = (s.last_network_out > 0 && s.network_out >= s.last_network_out)
+    ? (s.network_out - s.last_network_out)
+    : (s.network_out || 0);
+  return { inBytes: mIn, outBytes: mOut };
+}
+
+function parseNddDays(nddStr) {
+  if (!nddStr) return null;
+  const normalized = nddStr.replace(/\//g, '-');
+  const dt = new Date(normalized + 'T00:00:00');
+  if (Number.isNaN(dt.getTime())) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((dt - today) / 86400000);
+}
+
+/* ============ 6. State, History & Keyed DOM Management ============ */
+const state = {
+  statusFilter: 'all',
+  regionFilter: 'all',
+  sortBy: 'weight',
+  viewMode: 'list',
+  paused: false,
+  fetchError: false,
+  expanded: new Set(),
+  history: new Map(), // name -> { cpu: [], mem: [], rx: [], tx: [] }
+};
+
+let lastStatsPayload = null;
+let lastRenderedOrderKey = '';
+const rowRegistry = new Map(); // name -> DOM refs
+
+function pushHistory(s) {
+  const key = s.name;
+  let h = state.history.get(key);
+  if (!h) {
+    h = { cpu: [], mem: [], rx: [], tx: [] };
+    state.history.set(key, h);
+  }
+  const memPct = s.memory_total > 0 ? Math.min(100, (s.memory_used / s.memory_total) * 100) : 0;
+  h.cpu.push(Math.max(0, Math.min(100, Number(s.cpu) || 0)));
+  h.mem.push(memPct);
+  h.rx.push(Math.max(0, Number(s.network_rx) || 0));
+  h.tx.push(Math.max(0, Number(s.network_tx) || 0));
+  if (h.cpu.length > 60) {
+    h.cpu.shift(); h.mem.shift(); h.rx.shift(); h.tx.shift();
+  }
+}
+
+function buildSparkSvg(seriesList, colors, fixedMax = null) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 240 40');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('class', 'spark-svg');
+
+  // Subtle baseline
+  const base = document.createElementNS(ns, 'line');
+  base.setAttribute('x1', '0'); base.setAttribute('y1', '39');
+  base.setAttribute('x2', '240'); base.setAttribute('y2', '39');
+  base.setAttribute('stroke', 'rgba(255,255,255,0.06)');
+  base.setAttribute('stroke-width', '1');
+  svg.appendChild(base);
+
+  let maxVal = fixedMax;
+  if (maxVal === null) {
+    maxVal = 1;
+    for (const arr of seriesList) {
+      for (const v of arr) if (v > maxVal) maxVal = v;
+    }
+    maxVal *= 1.15;
+  }
+
+  seriesList.forEach((arr, idx) => {
+    if (!arr || arr.length === 0) return;
+    const pts = arr.length === 1 ? [arr[0], arr[0]] : arr;
+    const n = pts.length;
+    const coords = pts.map((v, i) => {
+      const x = (i / (n - 1)) * 240;
+      const y = 37 - Math.max(0, Math.min(1, v / maxVal)) * 33;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    if (idx === 0) {
+      const area = document.createElementNS(ns, 'polygon');
+      area.setAttribute('points', `0,39 ${coords.join(' ')} 240,39`);
+      area.setAttribute('fill', colors[idx]);
+      area.setAttribute('fill-opacity', '0.10');
+      svg.appendChild(area);
+    }
+
+    const line = document.createElementNS(ns, 'polyline');
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', colors[idx]);
+    line.setAttribute('stroke-width', '1.6');
+    line.setAttribute('stroke-linejoin', 'round');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('points', coords.join(' '));
+    svg.appendChild(line);
+  });
+
+  return svg;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function createServerRow(name) {
+  const item = el('article', 'server-item');
+  item.dataset.name = name;
+
+  const head = el('button', 'server-head');
+  head.type = 'button';
+  head.setAttribute('aria-expanded', 'false');
+
+  // Identity
+  const srvId = el('div', 'srv-id');
+  const titleLine = el('div', 'srv-title-line');
+  const dot = el('span', 'status-dot');
+  const alias = el('span', 'srv-alias');
+  const regionPill = el('span', 'tag-pill');
+  titleLine.append(dot, alias, regionPill);
+
+  const subLine = el('div', 'srv-sub-line');
+  const osWrap = el('span', 'srv-os');
+  const specSpan = el('span');
+  const upSpan = el('span');
+  subLine.append(osWrap, specSpan, upSpan);
+  srvId.append(titleLine, subLine);
+
+  // Metric helper
+  function makeMetric(key) {
+    const cell = el('div', 'metric-cell');
+    const top = el('div', 'metric-top');
+    const kEl = el('span', 'metric-k', key);
+    const vEl = el('span', 'metric-v');
+    top.append(kEl, vEl);
+    const track = el('div', 'hairline-track');
+    const fill = el('div', 'hairline-fill');
+    track.appendChild(fill);
+    const sub = el('div', 'metric-sub');
+    cell.append(top, track, sub);
+    return { cell, kEl, vEl, fill, sub };
+  }
+
+  const cpuM = makeMetric('CPU');
+  const ramM = makeMetric('RAM');
+  const diskM = makeMetric('DISK');
+
+  // Grid mode metrics wrapper (reparented when switching viewMode)
+  const gridMetricsWrap = el('div', 'grid-metrics-wrap');
+
+  // Net cell
+  const netCell = el('div', 'net-cell');
+  const rxEl = el('span', 'net-rx');
+  const txEl = el('span', 'net-tx');
+  netCell.append(rxEl, txEl);
+
+  // ISP cell
+  const ispCell = el('div', 'isp-cell');
+  function makeIspChip() {
+    const chip = el('span', 'isp-chip');
+    const n = el('span', 'isp-name');
+    const m = el('span', 'isp-ms');
+    chip.append(n, m);
+    return { chip, n, m };
+  }
+  const ctChip = makeIspChip();
+  const cuChip = makeIspChip();
+  const cmChip = makeIspChip();
+  ispCell.append(ctChip.chip, cuChip.chip, cmChip.chip);
+
+  const arrow = el('span', 'srv-arrow', '→');
+
+  // Drawer
+  const drawer = el('div', 'drawer');
+  const drawerOverflow = el('div', 'drawer-overflow');
+  const drawerInner = el('div', 'drawer-inner');
+
+  const sparkRow = el('div', 'spark-row');
+  function makeSparkCard() {
+    const card = el('div', 'spark-card');
+    const h = el('div', 'spark-head');
+    const title = el('span', 'spark-title');
+    const val = el('span', 'spark-val');
+    h.append(title, val);
+    const slot = el('div');
+    card.append(h, slot);
+    return { card, title, val, slot };
+  }
+  const sparkCpu = makeSparkCard();
+  const sparkMem = makeSparkCard();
+  const sparkNet = makeSparkCard();
+  sparkRow.append(sparkCpu.card, sparkMem.card, sparkNet.card);
+
+  const detailGrid = el('div', 'detail-grid');
+  function makeKv() {
+    const cell = el('div', 'detail-cell');
+    const k = el('div', 'detail-k');
+    const v = el('div', 'detail-v');
+    const sub = el('div', 'detail-sub');
+    cell.append(k, v, sub);
+    return { cell, k, v, sub };
+  }
+  const kvLoad = makeKv();
+  const kvMem = makeKv();
+  const kvDisk = makeKv();
+  const kvMonthly = makeKv();
+  const kvTotal = makeKv();
+  const kvConn = makeKv();
+  const kvIsp = makeKv();
+  const kvMeta = makeKv();
+  detailGrid.append(kvLoad.cell, kvMem.cell, kvDisk.cell, kvMonthly.cell, kvTotal.cell, kvConn.cell, kvIsp.cell, kvMeta.cell);
+
+  drawerInner.append(sparkRow, detailGrid);
+  drawerOverflow.appendChild(drawerInner);
+  drawer.appendChild(drawerOverflow);
+
+  head.append(srvId, cpuM.cell, ramM.cell, diskM.cell, netCell, ispCell, arrow);
+  item.append(head, drawer);
+
+  head.addEventListener('click', () => {
+    const willOpen = !state.expanded.has(name);
+    if (willOpen) state.expanded.add(name);
+    else state.expanded.delete(name);
+    item.classList.toggle('is-open', willOpen);
+    head.setAttribute('aria-expanded', String(willOpen));
+    if (willOpen && lastStatsPayload) {
+      const srv = (lastStatsPayload.servers || []).find(x => x.name === name);
+      if (srv) updateRow(refs, srv, lastStatsPayload.updated);
+    }
+  });
+
+  const refs = {
+    item, head, srvId, dot, alias, regionPill, osWrap, specSpan, upSpan,
+    cpuM, ramM, diskM, gridMetricsWrap, netCell, rxEl, txEl,
+    ispCell, ctChip, cuChip, cmChip, arrow,
+    sparkCpu, sparkMem, sparkNet,
+    kvLoad, kvMem, kvDisk, kvMonthly, kvTotal, kvConn, kvIsp, kvMeta,
+    lastLayoutMode: 'list',
+    lastOsKey: ''
+  };
+  rowRegistry.set(name, refs);
+  return refs;
+}
+
+function applyRowViewMode(refs, mode) {
+  if (refs.lastLayoutMode === mode) return;
+  refs.lastLayoutMode = mode;
+  const { head, srvId, cpuM, ramM, diskM, gridMetricsWrap, netCell, ispCell, arrow } = refs;
+  if (mode === 'grid') {
+    gridMetricsWrap.append(cpuM.cell, ramM.cell, diskM.cell);
+    head.append(srvId, arrow, gridMetricsWrap, netCell, ispCell);
+  } else {
+    gridMetricsWrap.remove();
+    head.append(srvId, cpuM.cell, ramM.cell, diskM.cell, netCell, ispCell, arrow);
+  }
+}
+
+function updateRow(refs, s, updatedTs) {
+  const isOnline = Boolean(s.online4 || s.online6);
+  refs.item.classList.toggle('is-offline', !isOnline);
+  const isOpen = state.expanded.has(s.name);
+  refs.item.classList.toggle('is-open', isOpen);
+  refs.head.setAttribute('aria-expanded', String(isOpen));
+  applyRowViewMode(refs, state.viewMode);
+
+  // Identity
+  refs.alias.textContent = s.alias || s.name || 'unknown';
+  const loc = (s.location || '').trim().toUpperCase();
+  refs.regionPill.textContent = loc || '--';
+  refs.regionPill.style.display = loc ? '' : 'none';
+
+  const labels = parseLabels(s.labels);
+  const osKey = labels.os || '';
+  if (refs.lastOsKey !== osKey) {
+    refs.lastOsKey = osKey;
+    refs.osWrap.replaceChildren();
+    if (osKey) {
+      refs.osWrap.appendChild(osIconSvg(osKey));
+      refs.osWrap.appendChild(document.createTextNode(formatOsName(osKey)));
+      refs.osWrap.style.display = '';
+    } else {
+      refs.osWrap.style.display = 'none';
+    }
+  }
+  refs.specSpan.textContent = labels.spec ? `· ${labels.spec}` : '';
+  refs.specSpan.style.display = labels.spec ? '' : 'none';
+  refs.upSpan.textContent = s.uptime ? `· ${t('lbl.uptime')} ${s.uptime}` : '';
+
+  // CPU
+  const cpuPct = Math.max(0, Math.min(100, Number(s.cpu) || 0));
+  refs.cpuM.kEl.textContent = t('lbl.cpu');
+  refs.cpuM.vEl.textContent = `${cpuPct.toFixed(0)}%`;
+  refs.cpuM.vEl.style.color = usageColor(cpuPct);
+  refs.cpuM.fill.style.width = `${cpuPct.toFixed(1)}%`;
+  refs.cpuM.fill.style.backgroundColor = usageColor(cpuPct);
+  refs.cpuM.sub.textContent = `${t('lbl.load')} ${Number(s.load_1 || 0).toFixed(2)}`;
+
+  // RAM (KiB -> Bytes)
+  const memTotalBytes = (Number(s.memory_total) || 0) * 1024;
+  const memUsedBytes = (Number(s.memory_used) || 0) * 1024;
+  const memPct = memTotalBytes > 0 ? Math.min(100, (memUsedBytes / memTotalBytes) * 100) : 0;
+  refs.ramM.kEl.textContent = t('lbl.ram');
+  refs.ramM.vEl.textContent = `${memPct.toFixed(0)}%`;
+  refs.ramM.vEl.style.color = usageColor(memPct);
+  refs.ramM.fill.style.width = `${memPct.toFixed(1)}%`;
+  refs.ramM.fill.style.backgroundColor = usageColor(memPct);
+  refs.ramM.sub.textContent = `${formatBytes(memUsedBytes, 1)} / ${formatBytes(memTotalBytes, 1)}`;
+
+  // Disk (MiB -> Bytes)
+  const hddTotalBytes = (Number(s.hdd_total) || 0) * 1024 * 1024;
+  const hddUsedBytes = (Number(s.hdd_used) || 0) * 1024 * 1024;
+  const hddPct = hddTotalBytes > 0 ? Math.min(100, (hddUsedBytes / hddTotalBytes) * 100) : 0;
+  refs.diskM.kEl.textContent = t('lbl.disk');
+  refs.diskM.vEl.textContent = `${hddPct.toFixed(0)}%`;
+  refs.diskM.vEl.style.color = usageColor(hddPct);
+  refs.diskM.fill.style.width = `${hddPct.toFixed(1)}%`;
+  refs.diskM.fill.style.backgroundColor = usageColor(hddPct);
+  refs.diskM.sub.textContent = `${formatBytes(hddUsedBytes, 1)} / ${formatBytes(hddTotalBytes, 1)}`;
+
+  // Net speed (Bytes/s)
+  refs.rxEl.textContent = `↓ ${formatSpeed(s.network_rx)}`;
+  refs.txEl.textContent = `↑ ${formatSpeed(s.network_tx)}`;
+
+  // Three-ISP chips
+  function setChip(chipRef, labelKey, fullKey, msRaw, lossRaw) {
+    const ms = Number(msRaw) || 0;
+    const loss = Number(lossRaw) || 0;
+    chipRef.n.textContent = t(labelKey);
+    const col = latencyColor(ms, loss);
+    chipRef.m.style.color = col;
+    if (loss >= 99.9) {
+      chipRef.m.textContent = '✕';
+      chipRef.chip.title = `${t(fullKey)}: ${t('lbl.timeout')} (${loss.toFixed(0)}% loss)`;
+      chipRef.chip.style.borderColor = 'rgba(248, 113, 113, .35)';
+    } else {
+      chipRef.m.textContent = `${Math.round(ms)}ms`;
+      chipRef.chip.title = `${t(fullKey)}: ${ms.toFixed(1)}ms (${loss.toFixed(1)}% loss)`;
+      chipRef.chip.style.borderColor = '';
+    }
+  }
+  setChip(refs.ctChip, 'isp.ct', 'isp.ct.full', s.time_189, s.ping_189);
+  setChip(refs.cuChip, 'isp.cu', 'isp.cu.full', s.time_10010, s.ping_10010);
+  setChip(refs.cmChip, 'isp.cm', 'isp.cm.full', s.time_10086, s.ping_10086);
+
+  // Expanded Drawer (only update heavy SVG & KV details when open)
+  if (isOpen) {
+    const h = state.history.get(s.name) || { cpu: [cpuPct], mem: [memPct], rx: [s.network_rx || 0], tx: [s.network_tx || 0] };
+
+    refs.sparkCpu.title.textContent = t('spark.cpu');
+    refs.sparkCpu.val.textContent = `${cpuPct.toFixed(1)}%`;
+    refs.sparkCpu.slot.replaceChildren(buildSparkSvg([h.cpu], [usageColor(cpuPct)], 100));
+
+    refs.sparkMem.title.textContent = t('spark.mem');
+    refs.sparkMem.val.textContent = `${memPct.toFixed(1)}%`;
+    refs.sparkMem.slot.replaceChildren(buildSparkSvg([h.mem], [usageColor(memPct)], 100));
+
+    refs.sparkNet.title.textContent = t('spark.net');
+    refs.sparkNet.val.textContent = `↓ ${formatSpeed(s.network_rx)} · ↑ ${formatSpeed(s.network_tx)}`;
+    refs.sparkNet.slot.replaceChildren(buildSparkSvg([h.rx, h.tx], ['rgb(var(--c-calm))', 'rgb(var(--c-cyan))'], null));
+
+    // KV Grid
+    refs.kvLoad.k.textContent = t('kv.load');
+    refs.kvLoad.v.textContent = `${Number(s.load_1 || 0).toFixed(2)} / ${Number(s.load_5 || 0).toFixed(2)} / ${Number(s.load_15 || 0).toFixed(2)}`;
+    refs.kvLoad.sub.textContent = `CPU ${cpuPct.toFixed(1)}%`;
+
+    const swapTotalBytes = (Number(s.swap_total) || 0) * 1024;
+    const swapUsedBytes = (Number(s.swap_used) || 0) * 1024;
+    refs.kvMem.k.textContent = t('kv.mem');
+    refs.kvMem.v.textContent = `${formatBytes(memUsedBytes, 2)} / ${formatBytes(memTotalBytes, 2)}`;
+    refs.kvMem.sub.textContent = swapTotalBytes > 0
+      ? `Swap ${formatBytes(swapUsedBytes, 1)} / ${formatBytes(swapTotalBytes, 1)}`
+      : `Swap ${t('lbl.none')}`;
+
+    refs.kvDisk.k.textContent = t('kv.disk');
+    refs.kvDisk.v.textContent = `${formatBytes(hddUsedBytes, 2)} / ${formatBytes(hddTotalBytes, 2)}`;
+    refs.kvDisk.sub.textContent = `${hddPct.toFixed(1)}%`;
+
+    const m = monthlyTraffic(s);
+    refs.kvMonthly.k.textContent = t('kv.monthly');
+    refs.kvMonthly.v.textContent = `↓ ${formatBytes(m.inBytes, 2)}`;
+    refs.kvMonthly.sub.textContent = `↑ ${formatBytes(m.outBytes, 2)}`;
+
+    refs.kvTotal.k.textContent = t('kv.total');
+    refs.kvTotal.v.textContent = `↓ ${formatBytes(s.network_in || 0, 2)}`;
+    refs.kvTotal.sub.textContent = `↑ ${formatBytes(s.network_out || 0, 2)}`;
+
+    refs.kvConn.k.textContent = t('kv.conn');
+    refs.kvConn.v.textContent = `TCP ${s.tcp_count || 0} · UDP ${s.udp_count || 0}`;
+    refs.kvConn.sub.textContent = `Proc ${s.process_count || 0} · Thr ${s.thread_count || 0}`;
+
+    refs.kvIsp.k.textContent = t('kv.isp');
+    const ctStr = Number(s.ping_189) >= 99.9 ? `${t('isp.ct')}:${t('lbl.timeout')}` : `${t('isp.ct')}:${Math.round(s.time_189)}ms(${Number(s.ping_189).toFixed(0)}%)`;
+    const cuStr = Number(s.ping_10010) >= 99.9 ? `${t('isp.cu')}:${t('lbl.timeout')}` : `${t('isp.cu')}:${Math.round(s.time_10010)}ms(${Number(s.ping_10010).toFixed(0)}%)`;
+    const cmStr = Number(s.ping_10086) >= 99.9 ? `${t('isp.cm')}:${t('lbl.timeout')}` : `${t('isp.cm')}:${Math.round(s.time_10086)}ms(${Number(s.ping_10086).toFixed(0)}%)`;
+    refs.kvIsp.v.textContent = `${ctStr} · ${cuStr}`;
+    refs.kvIsp.sub.textContent = cmStr;
+
+    const stacks = [];
+    if (s.online4) stacks.push('IPv4');
+    if (s.online6) stacks.push('IPv6');
+    const stackText = stacks.length ? stacks.join('+') : 'OFFLINE';
+    const typeText = (s.type || '').toUpperCase() || 'HOST';
+    const beatAge = (updatedTs && s.latest_ts) ? Math.max(0, updatedTs - s.latest_ts) : 0;
+    refs.kvMeta.k.textContent = t('kv.meta');
+    refs.kvMeta.v.textContent = `${typeText} · ${stackText} · ${s.name}`;
+    const nddDays = parseNddDays(labels.ndd);
+    const nddText = labels.ndd
+      ? `${t('kv.ndd')} ${labels.ndd}${nddDays !== null ? ` (${nddDays}${t('kv.days')})` : ''} · `
+      : '';
+    refs.kvMeta.sub.textContent = `${nddText}${t('kv.beat')} ${beatAge}s`;
+  }
+}
+
+/* ============ 7. Summary, Filters & Render Loop ============ */
+const serverListEl = document.getElementById('serverList');
+const emptyStateEl = document.getElementById('emptyState');
+const regionGroupEl = document.getElementById('regionGroup');
+const regionSepEl = document.getElementById('regionSep');
+let lastRegionSignature = '';
+
+function syncRegionPills(servers) {
+  const regions = Array.from(new Set(
+    servers.map(s => (s.location || '').trim().toUpperCase()).filter(Boolean)
+  )).sort();
+  const sig = regions.join(',');
+  if (sig === lastRegionSignature) return;
+  lastRegionSignature = sig;
+  regionGroupEl.replaceChildren();
+  if (regions.length <= 1) {
+    regionSepEl.style.display = 'none';
+    state.regionFilter = 'all';
+    return;
+  }
+  regionSepEl.style.display = '';
+  for (const reg of regions) {
+    const btn = el('button', 'pill-btn', reg);
+    btn.type = 'button';
+    btn.dataset.region = reg;
+    btn.classList.toggle('is-active', state.regionFilter === reg);
+    btn.addEventListener('click', () => {
+      state.regionFilter = state.regionFilter === reg ? 'all' : reg;
+      regionGroupEl.querySelectorAll('.pill-btn').forEach(b => {
+        b.classList.toggle('is-active', b.dataset.region === state.regionFilter);
+      });
+      if (lastStatsPayload) renderAll(lastStatsPayload);
+    });
+    regionGroupEl.appendChild(btn);
+  }
+}
+
+function renderAll(data) {
+  const servers = Array.isArray(data.servers) ? data.servers : [];
+  syncRegionPills(servers);
+
+  let onlineCount = 0;
+  let totalRx = 0, totalTx = 0;
+  let totalMIn = 0, totalMOut = 0;
+  let cpuSum = 0, memUsedSum = 0, memTotalSum = 0;
+  let maxMemPct = 0;
+
+  for (const s of servers) {
+    const on = Boolean(s.online4 || s.online6);
+    if (on) onlineCount++;
+    totalRx += Number(s.network_rx) || 0;
+    totalTx += Number(s.network_tx) || 0;
+    const m = monthlyTraffic(s);
+    totalMIn += m.inBytes;
+    totalMOut += m.outBytes;
+    cpuSum += Number(s.cpu) || 0;
+    const mUsed = (Number(s.memory_used) || 0) * 1024;
+    const mTot = (Number(s.memory_total) || 0) * 1024;
+    memUsedSum += mUsed;
+    memTotalSum += mTot;
+    if (mTot > 0) maxMemPct = Math.max(maxMemPct, (mUsed / mTot) * 100);
+  }
+
+  const totalCount = servers.length;
+  const offlineCount = totalCount - onlineCount;
+  const avgCpu = totalCount > 0 ? cpuSum / totalCount : 0;
+  const avgMemPct = memTotalSum > 0 ? Math.min(100, (memUsedSum / memTotalSum) * 100) : 0;
+
+  // Update cluster summary strip
+  document.getElementById('sumNodes').textContent = `${onlineCount} / ${totalCount}`;
+  document.getElementById('sumNodesSub').textContent = offlineCount === 0
+    ? t('sum.nodes.all')
+    : `${offlineCount} ${t('sum.nodes.off')}`;
+
+  document.getElementById('sumSpeed').textContent = formatSpeed(totalRx + totalTx);
+  document.getElementById('sumRx').textContent = `↓ ${formatSpeed(totalRx)}`;
+  document.getElementById('sumTx').textContent = `↑ ${formatSpeed(totalTx)}`;
+
+  document.getElementById('sumTraffic').textContent = formatBytes(totalMIn + totalMOut, 2);
+  document.getElementById('sumIn').textContent = `↓ ${formatBytes(totalMIn, 2)}`;
+  document.getElementById('sumOut').textContent = `↑ ${formatBytes(totalMOut, 2)}`;
+
+  document.getElementById('sumCpu').textContent = `${avgCpu.toFixed(1)}% CPU`;
+  document.getElementById('sumMem').textContent = `${formatBytes(memUsedSum, 1)} / ${formatBytes(memTotalSum, 1)} (${avgMemPct.toFixed(0)}%)`;
+  const memBar = document.getElementById('sumMemBar');
+  memBar.style.width = `${avgMemPct.toFixed(1)}%`;
+  memBar.style.backgroundColor = usageColor(avgMemPct);
+
+  // Update ambient health color
+  if (state.fetchError) currentHealthKey = 'error';
+  else if (totalCount === 0) currentHealthKey = 'loading';
+  else if (offlineCount > 0) currentHealthKey = 'offline';
+  else if (avgCpu >= 75 || maxMemPct >= 88) currentHealthKey = 'high';
+  else if (avgCpu >= 45 || maxMemPct >= 72) currentHealthKey = 'moderate';
+  else if (avgCpu >= 15 || (totalRx + totalTx) >= 102400) currentHealthKey = 'active';
+  else currentHealthKey = 'calm';
+  applyAmbientTheme();
+
+  // Timestamp
+  if (data.updated) {
+    const dt = new Date(data.updated * 1000);
+    document.getElementById('liveTimestamp').textContent = dt.toTimeString().slice(0, 8);
+  }
+
+  // Filter & Sort
+  const filtered = servers.filter(s => {
+    const on = Boolean(s.online4 || s.online6);
+    if (state.statusFilter === 'online' && !on) return false;
+    if (state.statusFilter === 'offline' && on) return false;
+    if (state.regionFilter !== 'all') {
+      const loc = (s.location || '').trim().toUpperCase();
+      if (loc !== state.regionFilter) return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    if (state.sortBy === 'cpu') return (b.cpu || 0) - (a.cpu || 0);
+    if (state.sortBy === 'mem') {
+      const am = a.memory_total > 0 ? a.memory_used / a.memory_total : 0;
+      const bm = b.memory_total > 0 ? b.memory_used / b.memory_total : 0;
+      return bm - am;
+    }
+    if (state.sortBy === 'net') return ((b.network_rx || 0) + (b.network_tx || 0)) - ((a.network_rx || 0) + (a.network_tx || 0));
+    return (b.weight || 0) - (a.weight || 0);
+  });
+
+  // Keyed DOM update without breaking open state
+  serverListEl.classList.toggle('is-grid', state.viewMode === 'grid');
+  const activeNames = new Set(filtered.map(s => s.name));
+  for (const [name, refs] of rowRegistry.entries()) {
+    if (!activeNames.has(name)) refs.item.remove();
+  }
+
+  if (filtered.length === 0) {
+    emptyStateEl.textContent = state.fetchError ? t('state.error') : t('state.empty');
+    emptyStateEl.style.display = '';
+    if (!emptyStateEl.isConnected) serverListEl.appendChild(emptyStateEl);
+    lastRenderedOrderKey = '';
+    return;
+  }
+
+  emptyStateEl.style.display = 'none';
+  const orderKey = `${state.viewMode}|${filtered.map(s => s.name).join(',')}`;
+  const needReorder = orderKey !== lastRenderedOrderKey;
+  lastRenderedOrderKey = orderKey;
+
+  for (const s of filtered) {
+    const refs = rowRegistry.get(s.name) || createServerRow(s.name);
+    updateRow(refs, s, data.updated);
+    if (needReorder || !refs.item.isConnected) {
+      serverListEl.appendChild(refs.item);
+    }
+  }
+}
+
+/* ============ 8. Toolbar & Polling Controls ============ */
+document.querySelectorAll('[data-status]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.statusFilter = btn.dataset.status;
+    document.querySelectorAll('[data-status]').forEach(b => b.classList.toggle('is-active', b === btn));
+    if (lastStatsPayload) renderAll(lastStatsPayload);
+  });
+});
+
+document.querySelectorAll('[data-sort]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.sortBy = btn.dataset.sort;
+    document.querySelectorAll('[data-sort]').forEach(b => b.classList.toggle('is-active', b === btn));
+    if (lastStatsPayload) renderAll(lastStatsPayload);
+  });
+});
+
+document.querySelectorAll('[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.viewMode = btn.dataset.view;
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('is-active', b === btn));
+    if (lastStatsPayload) renderAll(lastStatsPayload);
+  });
+});
+
+const liveToggleEl = document.getElementById('liveToggle');
+const liveStateTextEl = document.getElementById('liveStateText');
+
+function updateLiveBadgeText() {
+  liveToggleEl.classList.toggle('is-paused', state.paused);
+  liveToggleEl.classList.toggle('is-error', state.fetchError);
+  liveStateTextEl.textContent = state.paused ? t('live.paused') : t('live.on');
+}
+
+liveToggleEl.addEventListener('click', () => {
+  state.paused = !state.paused;
+  updateLiveBadgeText();
+  if (!state.paused) pollOnce();
+});
+
+let pollTimer = 0;
+let inFlight = false;
+
+async function pollOnce() {
+  if (inFlight || state.paused) return;
+  inFlight = true;
+  try {
+    const resp = await fetch('/json/stats.json', { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    state.fetchError = false;
+    lastStatsPayload = data;
+    for (const s of (data.servers || [])) pushHistory(s);
+    renderAll(data);
+  } catch (err) {
+    state.fetchError = true;
+    currentHealthKey = 'error';
+    applyAmbientTheme();
+    if (!lastStatsPayload) {
+      emptyStateEl.textContent = t('state.error');
+      emptyStateEl.style.display = '';
+    }
+  } finally {
+    updateLiveBadgeText();
+    inFlight = false;
+    schedulePoll();
+  }
+}
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  if (!state.paused && !document.hidden) {
+    pollTimer = setTimeout(pollOnce, 2000);
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  clearTimeout(clickTimer);
+  clickTimer = 0;
+  if (!document.hidden && !state.paused) pollOnce();
+  else clearTimeout(pollTimer);
+});
+
+(function init() {
+  const saved = localStorage.getItem('lian-lang');
+  let lang = 'zh';
+  if (saved && I18N[saved]) lang = saved;
+  else {
+    const nav = (navigator.language || '').toLowerCase();
+    if (nav.startsWith('ja')) lang = 'ja';
+    else if (nav.startsWith('en')) lang = 'en';
+  }
+  setLang(lang, true);
+  pollOnce();
+})();
+</script>
+</body>
+</html>
